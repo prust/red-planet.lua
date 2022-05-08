@@ -24,6 +24,7 @@ local world
 local win_w, win_h
 local spritesheet
 local player_quads
+local tilesheet_quad
 local scale = 1
 local entity_speed = 7
 local entity_max_speed = 14
@@ -56,7 +57,8 @@ function love.load()
     love.graphics.newQuad(5 * 16, 1 * 16, 16, 16, spritesheet:getDimensions())
   }
 
-  grass_quad = love.graphics.newQuad(32, 32, 32, 32, spritesheet:getDimensions())
+  -- grass_quad = love.graphics.newQuad(32, 32, 32, 32, spritesheet:getDimensions())
+  tilesheet_quad = love.graphics.newQuad(0, 0, 32 * 10, 32 * 2, spritesheet:getDimensions())
 
   love.graphics.setBackgroundColor(0.21, 0.18, 0.18)
 
@@ -75,8 +77,12 @@ function love.load()
       w = 32,
       h = 64,
       rot = 0,
+      aim_x = nil,
+      aim_y = nil,
       sel_x = nil,
       sel_y = nil,
+      tile_ix = 1,
+      placing_mode = true,
       is_input_controlled = true,
       is_flying = true,
       quad = player_quads[i],
@@ -96,7 +102,9 @@ function love.load()
           aim_down = {'axis:righty+', 'key:down'},
       
           place = {'mouse:1', 'axis:triggerright+', 'key:ralt'},
-          jump = {'key:space', 'button:a'}
+          jump = {'key:space', 'button:a'},
+          tile_right = {'button:rightshoulder'},
+          tile_left = {'button:leftshoulder'}
         },
         pairs = {
           move = {'move_left', 'move_right', 'move_up', 'move_down'},
@@ -147,15 +155,25 @@ end
 
 function love.update(dt)
   -- Hande player input & player shooting
+  local block_indexes_to_remove = {}
   for i=1, #entities do
     local entity = entities[i]
 
     if entity.input then
       entity.input:update()
+
       local aim_x, aim_y = entity.input:get('aim')
       if aim_x ~= 0 and aim_y ~= 0 then
-        entity.sel_x = math.floor((entity.x + (entity.w / 2) + (aim_x * 50)) / 32)
-        entity.sel_y = math.floor((entity.y + (entity.h / 2) + (aim_y * 50)) / 32)
+        local len = math.sqrt(aim_x^2 + aim_y^2)
+        aim_x = aim_x / len
+        aim_y = aim_y / len
+        entity.aim_x = aim_x
+        entity.aim_y = aim_y
+      end
+
+      if entity.aim_x and entity.aim_y then
+        entity.sel_x = math.floor((entity.x + (entity.w / 2) + (entity.aim_x * 50)) / 32)
+        entity.sel_y = math.floor((entity.y + (entity.h / 2) + (entity.aim_y * 50)) / 32)
       else
         entity.sel_x = nil
         entity.sel_y = nil
@@ -224,43 +242,75 @@ function love.update(dt)
         last_jump_press = love.timer.getTime()
       end
       
-      if entity.sel_x and entity.sel_y and entity.input:pressed('place') then
+      if entity.sel_x and entity.sel_y then
+        local block
+        local is_block_already = false
+        local block_ix = nil
         local dest_x = entity.sel_x * 32
         local dest_y = entity.sel_y * 32
-        
-        local is_block_already = false
-        for j = 1, #entities do
-          local candidate = entities[j]
-          if candidate.x == dest_x and candidate.y == dest_y and candidate.type == BLOCK then
-            is_block_already = true
+        if entity.input:down('place') then
+          for j = 1, #entities do
+            local candidate = entities[j]
+            if candidate.x == dest_x and candidate.y == dest_y and candidate.type == BLOCK then
+              is_block_already = true
+              block_ix = j
+              block = candidate
+            end
           end
         end
 
-        if not is_block_already then
-          -- make shooting sound
-          if (place_src:isPlaying()) then
-            place_src:stop()
+        if entity.input:pressed('place') then
+          entity.placing_mode = not is_block_already -- "placing" if a block isn't alreday there, "removing" if it is
+        end
+        
+        if entity.input:down('place') then
+          if (entity.placing_mode and not is_block_already) or (not entity.placing_mode and is_block_already) then
+            -- make shooting sound
+            if (place_src:isPlaying()) then
+              place_src:stop()
+            end
+            place_src:play()
+
+            -- create block
+            if entity.placing_mode then
+              block = {
+                x = dest_x,
+                y = dest_y,
+                dx = 0,
+                dy = 0,
+                w = 32,
+                h = 32,
+                quad = love.graphics.newQuad(entity.tile_ix * 32, 32, 32, 32, spritesheet:getDimensions()),
+                type = BLOCK
+              }
+              table.insert(entities, block)
+
+              -- TODO: due to scaling it should be more than / 2...
+              world:add(block, block.x, block.y, block.w, block.h)
+            -- remove block
+            else
+              table.insert(block_indexes_to_remove, block_ix)
+              world:remove(block)
+            end
           end
-          place_src:play()
-
-          -- create block
-          local block = {
-            x = dest_x,
-            y = dest_y,
-            dx = 0,
-            dy = 0,
-            w = 32,
-            h = 32,
-            quad = grass_quad,
-            type = BLOCK
-          }
-          table.insert(entities, block)
-
-          -- TODO: due to scaling it should be more than / 2...
-          world:add(block, block.x, block.y, block.w, block.h)
         end
       end
+
+      if entity.input:pressed('tile_right') then
+        entity.tile_ix = entity.tile_ix + 1
+      end
+
+      if entity.input:pressed('tile_left') then
+        entity.tile_ix = entity.tile_ix - 1
+      end
     end
+  end
+
+  -- iterate backwards over indexes so removal doesn't mess up other indexes
+  -- DRY violation w/ backwards iteration post-collisions
+  table.sort(block_indexes_to_remove)
+  for i = #block_indexes_to_remove, 1, -1 do
+    table.remove(entities, block_indexes_to_remove[i])
   end
 
   -- Handle collisions & removals
@@ -371,7 +421,9 @@ function love.draw()
     
     -- draw selected square
     if entity.sel_x and entity.sel_y then
+      love.graphics.setColor(0.3, 0.3, 0.3)
       love.graphics.rectangle('line', scale * entity.sel_x * 32, scale * entity.sel_y * 32, 32, 32)
+      love.graphics.setColor(1, 1, 1)
     end
   end
 
@@ -380,14 +432,28 @@ function love.draw()
   love.graphics.reset()
   love.graphics.setBackgroundColor(0.21, 0.18, 0.18) -- have to reset bgcolor after a reset()
 
+  -- draw tilesheet
+  local x, y, w, h = tilesheet_quad:getViewport()
+  local tilesheet_x = scale * ((win_w - w) / 2)
+  local tilesheet_y = scale * (win_h - 32 - h)
+  love.graphics.draw(spritesheet, tilesheet_quad, tilesheet_x, tilesheet_y)
+  love.graphics.setColor(0.3, 0.3, 0.3)
+  love.graphics.rectangle('line', tilesheet_x, tilesheet_y, w, h)
+
+  -- draw selected tile in tilesheet for each player
+  love.graphics.setColor(1, 1, 1)
+  for i = 1, #players do
+    local player = players[i]
+    love.graphics.rectangle('line', tilesheet_x + player.tile_ix * 32, tilesheet_y + 32, 32, 32)
+  end
+
   -- draw sidebar
   -- love.graphics.setColor(0.2, 0.2, 0.2)
   -- love.graphics.rectangle('fill', 0, 0, 300, win_h)
   -- love.graphics.setColor(0.3, 0.3, 0.3)
   -- love.graphics.rectangle('line', 0, 0, 300, win_h)
 
-  love.graphics.setColor(0.6, 0.6, 0.6)
-
+  love.graphics.setColor(0.3, 0.3, 0.3)
   love.graphics.print("FPS: " .. tostring(love.timer.getFPS()), 10, 10)
 
   -- draw a ship for each unit of health the player has
