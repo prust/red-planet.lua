@@ -29,6 +29,7 @@ local scale = 1
 local entity_speed = 7
 local entity_max_speed = 14
 local last_jump_press = nil
+local selection_color = {0, 0.55, 1, 1}
 
 -- types of entities
 local PLAYER = 1
@@ -82,12 +83,16 @@ function love.load()
       sel_x = nil,
       sel_y = nil,
       tile_ix = 1,
+      focus_area = 'level', -- or 'tilesheet' or 'behaviors' or 'systems'
       placing_mode = true,
       is_input_controlled = true,
       is_flying = true,
       quad = player_quads[i],
       type = PLAYER,
       health = 3,
+
+      -- "A" is the jump button when the focus is on the level (right trigger is for placing blocks)
+      -- but when the focus is on the tilesheet or on the behaviors or systems, then "A" is 'select' and "B" is 'back'
       input = baton.new({
         controls = {
           move_left = {'key:a', 'axis:leftx-', 'button:dpleft'},
@@ -102,9 +107,10 @@ function love.load()
           aim_down = {'axis:righty+', 'key:down'},
       
           place = {'mouse:1', 'axis:triggerright+', 'key:ralt'},
-          jump = {'key:space', 'button:a'},
-          tile_right = {'button:rightshoulder'},
-          tile_left = {'button:leftshoulder'}
+          jump_or_select = {'key:space', 'button:a'},
+          back = {'button:b'},
+          focus_right = {'button:rightshoulder'},
+          focus_left = {'button:leftshoulder'},
         },
         pairs = {
           move = {'move_left', 'move_right', 'move_up', 'move_down'},
@@ -184,12 +190,20 @@ function love.update(dt)
       --   player.rot = math.atan2(aim_y, aim_x)
       -- end
 
-      local dx, dy = entity.input:get('move')
-      entity.dx = dx * entity_speed
+      if entity.focus_area == 'level' then
+        local dx, dy = entity.input:get('move')
+        entity.dx = dx * entity_speed
+      elseif entity.focus_area == 'tilesheet' then
+        if entity.input:pressed('move_left') then
+          entity.tile_ix = entity.tile_ix - 1
+        elseif entity.input:pressed('move_right') then
+          entity.tile_ix = entity.tile_ix + 1
+        end
+      end
       
       -- when flying, move up if the player is holding the jump button
       if entity.is_flying then
-        if entity.input:down('jump') then
+        if entity.input:down('jump_or_select') then
           entity.dy = -5
         else
           entity.dy = 0
@@ -199,7 +213,7 @@ function love.update(dt)
         entity.dy = entity.dy + 0.5
         
         -- jumping
-        if entity.input:pressed('jump') then
+        if entity.input:pressed('jump_or_select') then
           -- check if there's a block under the player, to jump from
           local is_block_under_player = false
           for j = 1, #entities do
@@ -230,7 +244,7 @@ function love.update(dt)
 
       -- if the player presses jump twice in less than .5 seconds, it's a double-tap
       -- and we toggle flying mode
-      if entity.input:pressed('jump') and last_jump_press and (love.timer.getTime() - last_jump_press < 0.5) then
+      if entity.input:pressed('jump_or_select') and last_jump_press and (love.timer.getTime() - last_jump_press < 0.5) then
         entity.is_flying = not entity.is_flying
         if entity.is_flying then
           entity.dy = 0
@@ -238,7 +252,7 @@ function love.update(dt)
       end
 
       -- record the last jump time, so that next time we can see if it's a double-tap
-      if entity.input:pressed('jump') then
+      if entity.input:pressed('jump_or_select') then
         last_jump_press = love.timer.getTime()
       end
       
@@ -296,12 +310,12 @@ function love.update(dt)
         end
       end
 
-      if entity.input:pressed('tile_right') then
-        entity.tile_ix = entity.tile_ix + 1
-      end
-
-      if entity.input:pressed('tile_left') then
-        entity.tile_ix = entity.tile_ix - 1
+      if entity.input:pressed('focus_right') or entity.input:pressed('focus_left') then
+        if entity.focus_area == 'level' then
+          entity.focus_area = 'tilesheet'
+        else
+          entity.focus_area = 'level'
+        end
       end
     end
   end
