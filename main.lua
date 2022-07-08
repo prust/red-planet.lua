@@ -1,17 +1,10 @@
--- Red Planet Games
--- An immersive 2d game builder, featuring creative and survival modes
--- To make it fun and easy to build and modify 2d top-down and side-scrolling games (platformers, shooters, etc)
+-- Red Planet Game Engine
+-- A 2D game engine to make it fun & easy to build 2d top-down and side-scrolling games (platformers, shooters, etc)
 
 -- priorities:
---   block selection & placing
---   double-jump to switch from gravity-mode to non-gravity mode
---   toggleable/configurable "behaviors" (components) for selected entity
---     by default, entities are 1 tile, but they can be multiple tiles (always in a rectangle shape)
---     their hit area can be non-snapped to the 32px grid, their position can also be non-snapped
---     so I guess there should be a crosshair cursor showing where the target block/entity is
---     and we select the top-most thing there on the current layer on click 
---   editable code blocks for "systems" when nothing is selected
---   "rotateable" would be a behavior with a checkbox for "rotate momentum"
+--   in-game level design (block placing)
+--   encourages game designers to prototype & test game ideas with simple shapes before investing in artwork & animation
+--   (in code) toggleable/configurable "behaviors" (components)
 
 bump = require 'libs/bump'
 anim8 = require 'libs/anim8'
@@ -28,8 +21,8 @@ local tilesheet_quad
 local scale = 1
 local entity_speed = 7
 local entity_max_speed = 14
-local last_jump_press = nil
 local selection_color = {0, 0.55, 1, 1}
+local tile_size = 32
 
 -- types of entities
 local PLAYER = 1
@@ -75,8 +68,8 @@ function love.load()
       y = 0,
       dx = 0,
       dy = 0,
-      w = 32,
-      h = 64,
+      w = tile_size,
+      h = tile_size * 2,
       rot = 0,
       aim_x = nil,
       aim_y = nil,
@@ -86,7 +79,6 @@ function love.load()
       focus_area = 'level', -- or 'tilesheet' or 'behaviors' or 'systems'
       placing_mode = true,
       is_input_controlled = true,
-      is_flying = true,
       quad = player_quads[i],
       type = PLAYER,
       health = 3,
@@ -138,6 +130,21 @@ function love.load()
     table.insert(entities, player)
   end
 
+  -- create a single block under the player, so the player doesn't immediately fall
+  local block = {
+    x = 5 * tile_size,
+    y = 7 * tile_size,
+    dx = 0,
+    dy = 0,
+    w = tile_size,
+    h = tile_size,
+    quad = love.graphics.newQuad(tile_size, tile_size, tile_size, tile_size, spritesheet:getDimensions()),
+    type = BLOCK
+  }
+  table.insert(entities, block)
+  world:add(block, block.x, block.y, block.w, block.h)
+
+
   love.window.setFullscreen(true)
   love.mouse.setVisible(false)
 end
@@ -184,32 +191,23 @@ function love.update(dt)
         end
       end
       
-      -- when flying, move up if the player is holding the jump button
-      if entity.is_flying then
-        if entity.input:down('jump_or_select') then
-          entity.dy = -5
-        else
-          entity.dy = 0
-        end
-      else -- when NOT flying, enforce gravity and jumping
-        -- gravity
-        entity.dy = entity.dy + 0.5
-        
-        -- jumping
-        if entity.input:pressed('jump_or_select') then
-          -- check if there's a block under the player, to jump from
-          local is_block_under_player = false
-          for j = 1, #entities do
-            local candidate = entities[j]
+      -- gravity
+      entity.dy = entity.dy + 0.5
+      
+      -- jumping
+      if entity.input:pressed('jump_or_select') then
+        -- check if there's a block under the player, to jump from
+        local is_block_under_player = false
+        for j = 1, #entities do
+          local candidate = entities[j]
 
-            -- check for gaps between rectangles to detect collision
-            if (candidate.type == BLOCK) and (candidate.x <= entity.x + entity.w) and (candidate.x + candidate.w >= entity.x) and (candidate.y <= entity.y + entity.h) and (candidate.h + candidate.y >= entity.y) then
-              is_block_under_player = true
-            end
+          -- check for gaps between rectangles to detect collision
+          if (candidate.type == BLOCK) and (candidate.x <= entity.x + entity.w) and (candidate.x + candidate.w >= entity.x) and (candidate.y <= entity.y + entity.h) and (candidate.h + candidate.y >= entity.y) then
+            is_block_under_player = true
           end
-          if is_block_under_player then
-            entity.dy = -10
-          end
+        end
+        if is_block_under_player then
+          entity.dy = -10
         end
       end
 
@@ -223,20 +221,6 @@ function love.update(dt)
         entity.dy = math.min(entity.dy, entity_max_speed)
       elseif entity.dy < 0 then
         entity.dy = math.max(entity.dy, -entity_max_speed)
-      end
-
-      -- if the player presses jump twice in less than .5 seconds, it's a double-tap
-      -- and we toggle flying mode
-      if entity.input:pressed('jump_or_select') and last_jump_press and (love.timer.getTime() - last_jump_press < 0.5) then
-        entity.is_flying = not entity.is_flying
-        if entity.is_flying then
-          entity.dy = 0
-        end
-      end
-
-      -- record the last jump time, so that next time we can see if it's a double-tap
-      if entity.input:pressed('jump_or_select') then
-        last_jump_press = love.timer.getTime()
       end
       
       if entity.sel_x and entity.sel_y then
