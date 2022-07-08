@@ -44,13 +44,6 @@ function love.load()
   
   spritesheet = love.graphics.newImage('images/tilesheet.png')
 
-  -- the tiles of tilesheet represent the first 3 players
-  player_quads = {
-    love.graphics.newQuad(0, 0, 32, 64, spritesheet:getDimensions()),
-    love.graphics.newQuad(6 * 16, 0, 16, 16, spritesheet:getDimensions()),
-    love.graphics.newQuad(5 * 16, 1 * 16, 16, 16, spritesheet:getDimensions())
-  }
-
   -- grass_quad = love.graphics.newQuad(32, 32, 32, 32, spritesheet:getDimensions())
   tilesheet_quad = love.graphics.newQuad(0, 0, 32 * 10, 32 * 2, spritesheet:getDimensions())
 
@@ -69,7 +62,7 @@ function love.load()
       dx = 0,
       dy = 0,
       w = tile_size,
-      h = tile_size * 2,
+      h = tile_size,
       rot = 0,
       aim_x = nil,
       aim_y = nil,
@@ -79,7 +72,8 @@ function love.load()
       focus_area = 'level', -- or 'tilesheet' or 'behaviors' or 'systems'
       placing_mode = true,
       is_input_controlled = true,
-      quad = player_quads[i],
+      shape = 'rect',
+      color = {1, 0, 0},
       type = PLAYER,
       health = 3,
 
@@ -124,8 +118,8 @@ function love.load()
 
   for i=1, #players do
     local player = players[i]
-    player.x = 10 * 16
-    player.y = 10 * 16
+    player.x = 5 * tile_size
+    player.y = 5 * tile_size
     world:add(player, player.x, player.y, player.w, player.h)
     table.insert(entities, player)
   end
@@ -138,12 +132,12 @@ function love.load()
     dy = 0,
     w = tile_size,
     h = tile_size,
-    quad = love.graphics.newQuad(tile_size, tile_size, tile_size, tile_size, spritesheet:getDimensions()),
+    shape = 'rect',
+    color = {0.2, 0.5, 0.2},
     type = BLOCK
   }
   table.insert(entities, block)
   world:add(block, block.x, block.y, block.w, block.h)
-
 
   love.window.setFullscreen(true)
   love.mouse.setVisible(false)
@@ -261,8 +255,8 @@ function love.update(dt)
                 dy = 0,
                 w = 32,
                 h = 32,
-                quad = love.graphics.newQuad(entity.tile_ix * 32, 32, 32, 32, spritesheet:getDimensions()),
-                type = BLOCK
+                shape = 'rect',
+                color = {0.2, 0.5, 0.2}
               }
               table.insert(entities, block)
 
@@ -389,8 +383,6 @@ function love.draw()
   -- ty = -(sum_player_y / #players) + ((win_h/2) / scale)
   tx = 0
   ty = 0
-  
-  love.graphics.setColor(1, 1, 1, 1)
 
   -- translate to that average x,y
   love.graphics.translate(tx * scale, ty * scale)
@@ -398,8 +390,42 @@ function love.draw()
   
   for i=1, #entities do
     local entity = entities[i]
-    love.graphics.draw(spritesheet, entity.quad, scale * (entity.x + entity.w / 2), scale * (entity.y + entity.h / 2), entity.rot or 0, scale, scale, entity.w / 2,  entity.h / 2)
-    
+    if entity.shape then
+      love.graphics.setColor(entity.color or {1, 1, 1})
+      local style = entity.style or 'fill'
+      local x = entity.x
+      local y = entity.y
+      if entity.shape == 'rect' then
+        love.graphics.rectangle(style, x, y, tile_size, tile_size)
+      elseif entity.shape == 'rect-small' then
+        love.graphics.rectangle(style, x+tile_size/8, y+tile_size/8, tile_size * 0.75, tile_size * 0.75)
+      elseif entity.shape == 'rect-rounded' then
+        love.graphics.rectangle(style, x, y, tile_size, tile_size, tile_size/4, tile_size/4)
+      elseif entity.shape == 'rect-small-rounded' then
+        love.graphics.rectangle(style, x+tile_size/8, y+tile_size/8, tile_size * 0.75, tile_size * 0.75, tile_size/4, tile_size/4, 32)
+      elseif entity.shape == 'circle' then
+        love.graphics.circle(style, x + tile_size/2, y + tile_size/2, tile_size / 2)
+        if style == 'fill' then
+          love.graphics.circle('line', x + tile_size/2, y + tile_size/2, tile_size / 2)
+        end
+      elseif entity.shape == 'triangle-up' then
+        love.graphics.polygon('fill', x,y+tile_size, x+tile_size/2,y, x+tile_size,y+tile_size)
+      elseif entity.shape == 'triangle-down' then
+        love.graphics.polygon('fill', x,y, x+tile_size/2,y+tile_size, x+tile_size,y)
+      elseif entity.shape == 'triangle-right' then
+        love.graphics.polygon('fill', x,y, x+tile_size,y+tile_size/2, x,y+tile_size)
+      elseif entity.shape == 'triangle-left' then
+        love.graphics.polygon('fill', x+tile_size,y, x,y+tile_size/2, x+tile_size,y+tile_size)
+      elseif entity.shape == 'diamond' then
+        love.graphics.polygon('fill', x+tile_size/2,y, x+tile_size,y+tile_size/2, x+tile_size/2,y+tile_size, x,y+tile_size/2)
+      else
+        error('Unknown shape: ' .. entity.shape)
+      end
+    else
+      love.graphics.setColor({1, 1, 1})
+      love.graphics.draw(spritesheet, entity.quad, scale * (entity.x + entity.w / 2), scale * (entity.y + entity.h / 2), entity.rot or 0, scale, scale, entity.w / 2,  entity.h / 2)
+    end
+
     -- draw selected square
     if entity.sel_x and entity.sel_y then
       love.graphics.setColor(0.3, 0.3, 0.3)
@@ -428,26 +454,13 @@ function love.draw()
     love.graphics.rectangle('line', tilesheet_x + player.tile_ix * 32, tilesheet_y + 32, 32, 32)
   end
 
-  -- draw sidebar
-  -- love.graphics.setColor(0.2, 0.2, 0.2)
-  -- love.graphics.rectangle('fill', 0, 0, 300, win_h)
-  -- love.graphics.setColor(0.3, 0.3, 0.3)
-  -- love.graphics.rectangle('line', 0, 0, 300, win_h)
-
   love.graphics.setColor(0.3, 0.3, 0.3)
   love.graphics.print("FPS: " .. tostring(love.timer.getFPS()), 10, 10)
 
-  -- draw a ship for each unit of health the player has
-  -- for i=1, #players do
-  --   local player = players[i]
-  --   for x = 1, player.health do
-  --     love.graphics.draw(spritesheet, player.quad, -10 + 20 * x, 10 + 20 * i, 0, 1, 1)
-  --   end
-  -- end
+  -- TODO: systems that render points & hearts/health per player
 end
 
 function love.resize(w, h)
-  --map:resize(w*8, h*8)
   win_w = w
   win_h = h
 end
