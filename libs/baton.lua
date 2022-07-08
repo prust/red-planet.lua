@@ -81,6 +81,16 @@ function sourceFunction.keyboardMouse.mouse(button)
 	return love.mouse.isDown(tonumber(button)) and 1 or 0
 end
 
+-- instead we need to record the previous position & report the difference?
+-- actually, it might be important to instead do love.mouse.setRelativeMode(true)
+-- and rely on love.mousemoved instead, so the cursor won't get stuck at the edges of the screen
+function sourceFunction.keyboardMouse.position(value)
+  local axis, direction = parseAxis(value)
+  value = (axis == 'leftx' or axis == 'rightx') and love.mouse.getX() or love.mouse.getY()
+  if direction == '-' then value = -value end
+  return value > 0 and value or 0
+end
+
 -- checks the position of a joystick axis
 function sourceFunction.joystick.axis(joystick, value)
 	local axis, direction = parseAxis(value)
