@@ -128,8 +128,6 @@ function love.load()
   -- place: w=Noise,f=203.836,v=180.025,V=663.565,t=118.076,T=0.097,_=0.08,d=124.898,D=0.195,p=1.788,a=0.2,A=1.4,b=0.8,r=2.8,s=25,S=1.477,z=Down,g=0.564,l=0.091,e=Sawtooth,N=998,F=231.972,B=Fixed,E=4948
   place_src = love.audio.newSource('sfx/place.wav', 'static')
 
-  pcall(playRandomSong)
-
   world = bump.newWorld(64)
 
   for i=1, #players do
@@ -142,21 +140,6 @@ function love.load()
 
   love.window.setFullscreen(true)
   love.mouse.setVisible(false)
-end
-
-function playRandomSong()
-  local songs = {
-    'celldweller_tim_ismag_tough_guy.wav',
-    'celldweller_just_like_you.wav',
-    'celldweller_into_the_void.wav',
-    'celldweller_end_of_an_empire.wav',
-    'celldweller_down_to_earth.wav'
-  }
-  
-  math.randomseed(os.time())
-  local song = songs[math.random(#songs)]
-  local song_src = love.audio.newSource('music/' .. song, "stream")
-  song_src:play()
 end
 
 function love.update(dt)
