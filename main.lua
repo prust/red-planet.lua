@@ -17,7 +17,6 @@ local world
 local win_w, win_h
 local spritesheet
 local player_quads
-local tilesheet_quad
 local scale = 1
 local entity_speed = 7
 local entity_max_speed = 14
@@ -30,6 +29,11 @@ local BULLET = 2
 local TURRET = 3
 local ENEMY_BULLET = 4
 local BLOCK = 5
+local ENEMY = 6
+local GOAL = 7
+
+local blocks_to_place = {'stone', 'enemy', 'goal'}
+local block_to_place_ix = 1
 
 if os.getenv("LOCAL_LUA_DEBUGGER_VSCODE") == "1" then
   require("lldebugger").start()
@@ -44,10 +48,7 @@ function love.load()
   
   spritesheet = love.graphics.newImage('images/tilesheet.png')
 
-  -- grass_quad = love.graphics.newQuad(32, 32, 32, 32, spritesheet:getDimensions())
-  tilesheet_quad = love.graphics.newQuad(0, 0, 32 * 10, 32 * 2, spritesheet:getDimensions())
-
-  love.graphics.setBackgroundColor(0.21, 0.18, 0.18)
+  love.graphics.setBackgroundColor(0, 0, 0)
 
   local joysticks = love.joystick.getJoysticks()
   local num_players = #joysticks
@@ -69,11 +70,10 @@ function love.load()
       sel_x = nil,
       sel_y = nil,
       tile_ix = 1,
-      focus_area = 'level', -- or 'tilesheet' or 'behaviors' or 'systems'
       placing_mode = true,
       is_input_controlled = true,
       shape = 'rect',
-      color = {1, 0, 0},
+      color = {0, 0.62, 0.16},
       type = PLAYER,
       health = 3,
 
@@ -132,7 +132,7 @@ function love.load()
     dy = 0,
     w = tile_size,
     h = tile_size,
-    shape = 'rect',
+    shape = 'stone',
     color = {0.2, 0.5, 0.2},
     type = BLOCK
   }
@@ -174,16 +174,8 @@ function love.update(dt)
       --   player.rot = math.atan2(aim_y, aim_x)
       -- end
 
-      if entity.focus_area == 'level' then
-        local dx, dy = entity.input:get('move')
-        entity.dx = dx * entity_speed
-      elseif entity.focus_area == 'tilesheet' then
-        if entity.input:pressed('move_left') then
-          entity.tile_ix = entity.tile_ix - 1
-        elseif entity.input:pressed('move_right') then
-          entity.tile_ix = entity.tile_ix + 1
-        end
-      end
+      local dx, dy = entity.input:get('move')
+      entity.dx = dx * entity_speed
       
       -- gravity
       entity.dy = entity.dy + 0.5
@@ -226,7 +218,7 @@ function love.update(dt)
         if entity.input:down('place') then
           for j = 1, #entities do
             local candidate = entities[j]
-            if candidate.x == dest_x and candidate.y == dest_y and candidate.type == BLOCK then
+            if candidate.x == dest_x and candidate.y == dest_y then
               is_block_already = true
               block_ix = j
               block = candidate
@@ -240,7 +232,7 @@ function love.update(dt)
         
         if entity.input:down('place') then
           if (entity.placing_mode and not is_block_already) or (not entity.placing_mode and is_block_already) then
-            -- make shooting sound
+            -- make placing sound
             if (place_src:isPlaying()) then
               place_src:stop()
             end
@@ -255,12 +247,18 @@ function love.update(dt)
                 dy = 0,
                 w = 32,
                 h = 32,
-                shape = 'rect',
-                color = {0.2, 0.5, 0.2}
+                shape = blocks_to_place[block_to_place_ix],
+                color = {0, 0.76, 1}
               }
+              if block.shape == 'goal' then
+                block.type = GOAL
+              elseif block.shape == 'enemy' then
+                block.type = ENEMY
+              elseif block.shape == 'stone' then
+                block.type = BLOCK
+              end
               table.insert(entities, block)
 
-              -- TODO: due to scaling it should be more than / 2...
               world:add(block, block.x, block.y, block.w, block.h)
             -- remove block
             else
@@ -271,11 +269,13 @@ function love.update(dt)
         end
       end
 
-      if entity.input:pressed('focus_right') or entity.input:pressed('focus_left') then
-        if entity.focus_area == 'level' then
-          entity.focus_area = 'tilesheet'
-        else
-          entity.focus_area = 'level'
+      if entity.input:pressed('focus_right') then
+        if block_to_place_ix < #blocks_to_place then
+          block_to_place_ix = block_to_place_ix + 1
+        end
+      elseif entity.input:pressed('focus_left') then
+        if block_to_place_ix > 1 then
+          block_to_place_ix = block_to_place_ix - 1
         end
       end
     end
@@ -300,40 +300,49 @@ function love.update(dt)
 
     for j = 1, #cols do
       local col = cols[j]
-      if entity.type == BULLET then
-        if col.other.type == TURRET then
-          col.other.health = col.other.health - 1
-          if col.other.health <= 0 then
-            local turret_ix = indexOf(entities, col.other)
-            table.insert(entity_ix_to_remove, turret_ix)
-            table.insert(entities_to_remove, col.other)
-          end
-        end
-
-        if col.other.type ~= PLAYER then
-          table.insert(entity_ix_to_remove, i)
-          table.insert(entities_to_remove, entity)
-          break
-        end
-      elseif entity.type == ENEMY_BULLET then
-        if col.other.type == PLAYER then
-          col.other.health = col.other.health - 1
-          if col.other.health <= 0 then
-            local player_ix = indexOf(entities, col.other)
-            table.insert(entity_ix_to_remove, player_ix)
-            table.insert(entities_to_remove, col.other)
-
-            -- also remove player from players table
-            table.remove(players, indexOf(players, col.other))
-          end
-        end
-        
-        if col.other.type ~= TURRET then
-          table.insert(entity_ix_to_remove, i)
-          table.insert(entities_to_remove, entity)
-          break
+      if entity.type == PLAYER then
+        -- if it's an enemy, you lose
+        -- if it's a goal, you win
+        -- either way, you're done, so quit the game
+        if col.other.type == ENEMY or col.other.type == GOAL then
+          love.event.quit()
         end
       end
+
+      -- if entity.type == BULLET then
+      --   if col.other.type == TURRET then
+      --     col.other.health = col.other.health - 1
+      --     if col.other.health <= 0 then
+      --       local turret_ix = indexOf(entities, col.other)
+      --       table.insert(entity_ix_to_remove, turret_ix)
+      --       table.insert(entities_to_remove, col.other)
+      --     end
+      --   end
+
+      --   if col.other.type ~= PLAYER then
+      --     table.insert(entity_ix_to_remove, i)
+      --     table.insert(entities_to_remove, entity)
+      --     break
+      --   end
+      -- elseif entity.type == ENEMY_BULLET then
+      --   if col.other.type == PLAYER then
+      --     col.other.health = col.other.health - 1
+      --     if col.other.health <= 0 then
+      --       local player_ix = indexOf(entities, col.other)
+      --       table.insert(entity_ix_to_remove, player_ix)
+      --       table.insert(entities_to_remove, col.other)
+
+      --       -- also remove player from players table
+      --       table.remove(players, indexOf(players, col.other))
+      --     end
+      --   end
+        
+      --   if col.other.type ~= TURRET then
+      --     table.insert(entity_ix_to_remove, i)
+      --     table.insert(entities_to_remove, entity)
+      --     break
+      --   end
+      -- end
     end
   end
 
@@ -418,6 +427,41 @@ function love.draw()
         love.graphics.polygon('fill', x+tile_size,y, x,y+tile_size/2, x+tile_size,y+tile_size)
       elseif entity.shape == 'diamond' then
         love.graphics.polygon('fill', x+tile_size/2,y, x+tile_size,y+tile_size/2, x+tile_size/2,y+tile_size, x,y+tile_size/2)
+      elseif entity.shape == 'goal' then
+        -- polygon() can only draw convex shapes, since the goal is concave, we need to decompose it via triangulate()
+        local vertices = {x,y+tile_size, x+tile_size/2,y, x+tile_size,y+tile_size, x+(3/4)*tile_size,y+(3/4)*tile_size, x+tile_size/2,y+tile_size, x+tile_size/4,y+(3/4)*tile_size}
+        local triangles = love.math.triangulate(vertices)
+        for i, triangle in ipairs(triangles) do
+          love.graphics.polygon("fill", triangle)
+        end
+      elseif entity.shape == 'enemy' then
+        love.graphics.setColor(0.29, 0, 1)
+        love.graphics.rectangle('line', x, y, tile_size, tile_size)
+
+        love.graphics.setColor(0.63, 0, 1)
+        love.graphics.polygon('fill', x+tile_size/4,y+tile_size/2, x+tile_size/2,y+tile_size/4, x+(3/4)*tile_size,y+tile_size/2, x+tile_size/2,y+(3/4)*tile_size)
+      elseif entity.shape == 'stone' then
+        local is_stone_above = false
+        for j = 1, #entities do
+          local candidate = entities[j]
+          -- check for a block immediately above (same x and a y+height that equals the block's y)
+          if (candidate.type == BLOCK) and (candidate.x == entity.x) and (candidate.y + candidate.h == entity.y) then
+            is_stone_above = true
+          end
+        end
+
+        if is_stone_above then
+          -- no moss, just solid grey stone
+          love.graphics.setColor(0.204, 0.204, 0.204)
+          love.graphics.rectangle('fill', x, y, tile_size, tile_size)
+        else
+        -- draw a moss covering the top 1/4
+          love.graphics.setColor(0.325, 1, 0.957)
+          love.graphics.rectangle('fill', x, y, tile_size, tile_size/4)
+          -- draw the stone underneath
+          love.graphics.setColor(0.204, 0.204, 0.204)
+          love.graphics.rectangle('fill', x, y+tile_size/4, tile_size, tile_size * 3 / 4)
+        end
       else
         error('Unknown shape: ' .. entity.shape)
       end
@@ -437,22 +481,20 @@ function love.draw()
   -- map:bump_draw(world, tx, ty, sx, sy) -- debug the collision map
 
   love.graphics.reset()
-  love.graphics.setBackgroundColor(0.21, 0.18, 0.18) -- have to reset bgcolor after a reset()
+  love.graphics.setBackgroundColor(0, 0, 0) -- have to reset bgcolor after a reset()
 
   -- draw tilesheet
-  local x, y, w, h = tilesheet_quad:getViewport()
+  local w = tile_size * 10
+  local h = tile_size * 1
   local tilesheet_x = scale * ((win_w - w) / 2)
   local tilesheet_y = scale * (win_h - 32 - h)
-  love.graphics.draw(spritesheet, tilesheet_quad, tilesheet_x, tilesheet_y)
+  --love.graphics.draw(spritesheet, tilesheet_quad, tilesheet_x, tilesheet_y)
   love.graphics.setColor(0.3, 0.3, 0.3)
   love.graphics.rectangle('line', tilesheet_x, tilesheet_y, w, h)
 
   -- draw selected tile in tilesheet for each player
   love.graphics.setColor(1, 1, 1)
-  for i = 1, #players do
-    local player = players[i]
-    love.graphics.rectangle('line', tilesheet_x + player.tile_ix * 32, tilesheet_y + 32, 32, 32)
-  end
+  love.graphics.rectangle('line', tilesheet_x + (block_to_place_ix - 1) * tile_size, tilesheet_y, 32, 32)
 
   love.graphics.setColor(0.3, 0.3, 0.3)
   love.graphics.print("FPS: " .. tostring(love.timer.getFPS()), 10, 10)
