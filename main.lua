@@ -6,11 +6,26 @@
 --   encourages game designers to prototype & test game ideas with simple shapes before investing in artwork & animation
 --   (in code) toggleable/configurable "behaviors" (components)
 
+-- include dialog/narrative support via talkies lib (consider Erogodic as well)
+-- we'll need to pick something for the UI, it'd be nice to avoid nuklear/imgui embedding
+-- pure lua/love alternatives seem to be:
+-- * airstruck/luigi (the example looks like retained mode)
+-- * linux-man/LoveFrames (uses middleclass)
+-- * vrld/suit (immediate mode)
+-- I'd like to try SUIT, since I want experience w/ immediate-mode GUIs
+-- (and eventually would like to go in the direction of layout.c/quarks and the flutter architecture/pipeline but without its OOP & layers of abstractions)
+
 bump = require 'libs/bump'
 anim8 = require 'libs/anim8'
 baton = require 'libs/baton'
+bitser = require 'libs/bitser'
 
-local entities = {}
+local curr_level_file = 'owen_level_01.dat'
+local level = {
+  red_planet_ver = 0,
+  entities = {}
+}
+local entities = level.entities
 local players = {}
 
 local world
@@ -56,57 +71,34 @@ function love.load()
     num_players = 1 -- if there are no joysticks, fallback to one keyboard/mouse player
   end
 
+  local player_inputs = {}
   for i=1, num_players do
-    local player = {
-      x = 0,
-      y = 0,
-      dx = 0,
-      dy = 0,
-      w = tile_size,
-      h = tile_size,
-      rot = 0,
-      aim_x = nil,
-      aim_y = nil,
-      sel_x = nil,
-      sel_y = nil,
-      tile_ix = 1,
-      placing_mode = true,
-      is_input_controlled = true,
-      shape = 'rect',
-      color = {0, 0.62, 0.16},
-      type = PLAYER,
-      health = 3,
-
-      -- "A" is the jump button when the focus is on the level (right trigger is for placing blocks)
-      -- but when the focus is on the tilesheet or on the behaviors or systems, then "A" is 'select' and "B" is 'back'
-      input = baton.new({
-        controls = {
-          move_left = {'key:a', 'axis:leftx-', 'button:dpleft'},
-          move_right = {'key:d', 'axis:leftx+', 'button:dpright'},
-          move_up = {'key:w', 'axis:lefty-', 'button:dpup'},
-          move_down = {'key:s', 'axis:lefty+', 'button:dpdown'},
-          
-          -- TODO: add mouse-aiming to baton library
-          aim_left = {'axis:rightx-', 'key:left'},
-          aim_right = {'axis:rightx+', 'key:right'},
-          aim_up = {'axis:righty-', 'key:up'},
-          aim_down = {'axis:righty+', 'key:down'},
-      
-          place = {'mouse:1', 'axis:triggerright+', 'key:ralt'},
-          jump_or_select = {'key:space', 'button:a'},
-          back = {'button:b'},
-          focus_right = {'button:rightshoulder'},
-          focus_left = {'button:leftshoulder'},
-        },
-        pairs = {
-          move = {'move_left', 'move_right', 'move_up', 'move_down'},
-          aim = {'aim_left', 'aim_right', 'aim_up', 'aim_down'}
-        },
-        deadzone = 0.5,
-        joystick = joysticks[i]
-      })
-    }
-    table.insert(players, player)
+    table.insert(player_inputs, bitser.register('player_' .. i .. '_input', baton.new({
+      controls = {
+        move_left = {'key:a', 'axis:leftx-', 'button:dpleft'},
+        move_right = {'key:d', 'axis:leftx+', 'button:dpright'},
+        move_up = {'key:w', 'axis:lefty-', 'button:dpup'},
+        move_down = {'key:s', 'axis:lefty+', 'button:dpdown'},
+        
+        -- TODO: add mouse-aiming to baton library
+        aim_left = {'axis:rightx-', 'key:left'},
+        aim_right = {'axis:rightx+', 'key:right'},
+        aim_up = {'axis:righty-', 'key:up'},
+        aim_down = {'axis:righty+', 'key:down'},
+    
+        place = {'mouse:1', 'axis:triggerright+', 'key:ralt'},
+        jump_or_select = {'key:space', 'button:a'},
+        back = {'button:b'},
+        focus_right = {'button:rightshoulder'},
+        focus_left = {'button:leftshoulder'},
+      },
+      pairs = {
+        move = {'move_left', 'move_right', 'move_up', 'move_down'},
+        aim = {'aim_left', 'aim_right', 'aim_up', 'aim_down'}
+      },
+      deadzone = 0.5,
+      joystick = joysticks[i]
+    })))
   end
 
   -- https://www.leshylabs.com/apps/sfMaker/
@@ -116,28 +108,73 @@ function love.load()
 
   world = bump.newWorld(64)
 
-  for i=1, #players do
-    local player = players[i]
-    player.x = 5 * tile_size
-    player.y = 5 * tile_size
-    world:add(player, player.x, player.y, player.w, player.h)
-    table.insert(entities, player)
-  end
+  -- load level
+  if love.filesystem.getInfo(curr_level_file) then
+    level = bitser.loadLoveFile(curr_level_file)
+    entities = level.entities
 
-  -- create a single block under the player, so the player doesn't immediately fall
-  local block = {
-    x = 5 * tile_size,
-    y = 7 * tile_size,
-    dx = 0,
-    dy = 0,
-    w = tile_size,
-    h = tile_size,
-    shape = 'stone',
-    color = {0.2, 0.5, 0.2},
-    type = BLOCK
-  }
-  table.insert(entities, block)
-  world:add(block, block.x, block.y, block.w, block.h)
+    for i = 1, #entities do
+      local entity = entities[i]
+      world:add(entity, entity.x, entity.y, entity.w, entity.h)
+      if entity.type == PLAYER then
+        table.insert(players, entity)
+      end
+    end
+  else
+    -- TODO: determine if the saved level has more or fewer players
+    -- spawn more/fewer, as necessary?
+    -- if there are fewer players than before, probably best to rehydrate all of them but leave them frozen?
+    for i=1, num_players do
+      local player = {
+        x = 0,
+        y = 0,
+        dx = 0,
+        dy = 0,
+        w = tile_size,
+        h = tile_size,
+        rot = 0,
+        aim_x = nil,
+        aim_y = nil,
+        sel_x = nil,
+        sel_y = nil,
+        tile_ix = 1,
+        placing_mode = true,
+        is_input_controlled = true,
+        shape = 'rect',
+        color = {0, 0.62, 0.16},
+        type = PLAYER,
+        health = 3,
+
+        input = player_inputs[i]
+      }
+      
+      table.insert(players, player)
+    end
+
+    -- create new level
+    for i=1, #players do
+      local player = players[i]
+      player.x = 5 * tile_size
+      player.y = 5 * tile_size
+      world:add(player, player.x, player.y, player.w, player.h)
+      table.insert(entities, player)
+    end
+  
+    -- create a single block under the player, so the player doesn't immediately fall
+    local block = {
+      x = 5 * tile_size,
+      y = 7 * tile_size,
+      dx = 0,
+      dy = 0,
+      w = tile_size,
+      h = tile_size,
+      shape = 'stone',
+      color = {0.2, 0.5, 0.2},
+      type = BLOCK
+    }
+    table.insert(entities, block)
+    world:add(block, block.x, block.y, block.w, block.h)  
+  end
 
   love.window.setFullscreen(true)
   love.mouse.setVisible(false)
@@ -510,5 +547,7 @@ end
 function love.keypressed(key, scancode, isrepeat)
   if key == "escape" then
     love.event.quit()
+  elseif key == 'f5' then
+    bitser.dumpLoveFile(curr_level_file, level)
   end
 end
