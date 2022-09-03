@@ -15,12 +15,18 @@
 -- I'd like to try SUIT, since I want experience w/ immediate-mode GUIs
 -- (and eventually would like to go in the direction of layout.c/quarks and the flutter architecture/pipeline but without its OOP & layers of abstractions)
 
+if os.getenv("LOCAL_LUA_DEBUGGER_VSCODE") == "1" then
+  require("lldebugger").start()
+end
+
 bump = require 'libs/bump'
 anim8 = require 'libs/anim8'
 baton = require 'libs/baton'
 bitser = require 'libs/bitser'
 
-local curr_level_file = 'owen_level_01.dat'
+vector_editor = require 'vector-editor'
+
+local curr_level_file = 'owen_level_03.dat'
 local level = {
   red_planet_ver = 0,
   entities = {}
@@ -547,6 +553,8 @@ end
 function love.keypressed(key, scancode, isrepeat)
   if key == "escape" then
     love.event.quit()
+  elseif key == 'e' then
+    vector_editor.initialize()
   elseif key == 'f5' then
     bitser.dumpLoveFile(curr_level_file, level)
   end
