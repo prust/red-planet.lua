@@ -56,6 +56,16 @@ local GOAL = 7
 local blocks_to_place = {'stone', 'enemy', 'goal'}
 local block_to_place_ix = 1
 
+-- local enemy = {
+--   {color = {0.29, 0, 1}, style = 'line', is_closed = true, vertices = {0,0, 0,1, 1,1, 1,0}}, -- , 0,0
+--   {color = {0.63, 0, 1}, style = 'fill', vertices = {1/4,1/2, 1/2,1/4, 3/4,1/2, 1/2,3/4}}
+-- }
+
+local stone_with_moss = {
+  {color = {0.325, 1, 0.957}, style = 'fill', vertices = {0,0, 1,0, 1,1/4, 0,1/4}},
+  {color = {0.204, 0.204, 0.204}, style = 'fill', vertices = {0,1/4, 1,1/4, 1,1, 0,1}}
+}
+
 if os.getenv("LOCAL_LUA_DEBUGGER_VSCODE") == "1" then
   require("lldebugger").start()
 end
@@ -498,12 +508,35 @@ function love.draw()
           love.graphics.setColor(0.204, 0.204, 0.204)
           love.graphics.rectangle('fill', x, y, tile_size, tile_size)
         else
-        -- draw a moss covering the top 1/4
-          love.graphics.setColor(0.325, 1, 0.957)
-          love.graphics.rectangle('fill', x, y, tile_size, tile_size/4)
-          -- draw the stone underneath
-          love.graphics.setColor(0.204, 0.204, 0.204)
-          love.graphics.rectangle('fill', x, y+tile_size/4, tile_size, tile_size * 3 / 4)
+          love.graphics.push()
+          love.graphics.translate(x, y)
+          love.graphics.scale(tile_size)
+
+          for x, layer in ipairs(stone_with_moss) do
+            love.graphics.setColor(layer.color)
+            local vertices = layer.vertices
+            if layer.style == 'fill' then
+              if #vertices > 3*2 then
+                local triangles = love.math.triangulate(vertices)
+                for i, triangle in ipairs(triangles) do
+                  love.graphics.polygon('fill', triangle)
+                end
+              end
+            elseif layer.style == 'line' then
+              if layer.is_closed then
+                love.graphics.polygon('line', vertices)
+              else
+                love.graphics.line(vertices)
+              end
+            end
+          end
+          love.graphics.pop()
+        -- -- draw a moss covering the top 1/4
+        --   love.graphics.setColor(0.325, 1, 0.957)
+        --   love.graphics.rectangle('fill', x, y, tile_size, tile_size/4)
+        --   -- draw the stone underneath
+        --   love.graphics.setColor(0.204, 0.204, 0.204)
+        --   love.graphics.rectangle('fill', x, y+tile_size/4, tile_size, tile_size * 3 / 4)
         end
       else
         error('Unknown shape: ' .. entity.shape)
@@ -554,7 +587,10 @@ function love.keypressed(key, scancode, isrepeat)
   if key == "escape" then
     love.event.quit()
   elseif key == 'e' then
-    vector_editor.initialize()
+    vector_editor.initialize(stone_with_moss)
+    vector_editor.onSave = function(obj)
+      stone_with_moss = obj
+    end
   elseif key == 'f5' then
     bitser.dumpLoveFile(curr_level_file, level)
   end
