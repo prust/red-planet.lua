@@ -1,7 +1,11 @@
 -- Red Planet Game Engine
 -- A 2D game engine to make it fun & easy to build 2d top-down and side-scrolling games (platformers, shooters, etc)
 
--- priorities:
+-- Owen's Wish List:
+-- [x] Have to hit "X" button when you're touching the goal to win
+-- [ ] Make enemies move
+
+-- Other Ideas:
 --   in-game level design (block placing)
 --   encourages game designers to prototype & test game ideas with simple shapes before investing in artwork & animation
 --   (in code) toggleable/configurable "behaviors" (components)
@@ -104,6 +108,7 @@ function love.load()
     
         place = {'mouse:1', 'axis:triggerright+', 'key:ralt'},
         jump_or_select = {'key:space', 'button:a'},
+        action = {'key:return', 'button:x'},
         back = {'button:b'},
         focus_right = {'button:rightshoulder'},
         focus_left = {'button:leftshoulder'},
@@ -357,7 +362,9 @@ function love.update(dt)
         -- if it's an enemy, you lose
         -- if it's a goal, you win
         -- either way, you're done, so quit the game
-        if col.other.type == ENEMY or col.other.type == GOAL then
+        if col.other.type == ENEMY then
+          love.event.quit()
+        elseif col.other.type == GOAL and entity.input:pressed('action') then
           love.event.quit()
         end
       end
