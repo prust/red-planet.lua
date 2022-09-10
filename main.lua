@@ -60,14 +60,19 @@ local GOAL = 7
 local blocks_to_place = {'stone', 'enemy', 'goal'}
 local block_to_place_ix = 1
 
--- local enemy = {
---   {color = {0.29, 0, 1}, style = 'line', is_closed = true, vertices = {0,0, 0,1, 1,1, 1,0}}, -- , 0,0
---   {color = {0.63, 0, 1}, style = 'fill', vertices = {1/4,1/2, 1/2,1/4, 3/4,1/2, 1/2,3/4}}
--- }
-
-local stone_with_moss = {
-  {color = {0.325, 1, 0.957}, style = 'fill', vertices = {0,0, 1,0, 1,1/4, 0,1/4}},
-  {color = {0.204, 0.204, 0.204}, style = 'fill', vertices = {0,1/4, 1,1/4, 1,1, 0,1}}
+-- some built-in default vector graphics
+local vectors = {
+  stone = {
+    {color = {0.325, 1, 0.957}, style = 'fill', vertices = {0,0, 1,0, 1,1/4, 0,1/4}},
+    {color = {0.204, 0.204, 0.204}, style = 'fill', vertices = {0,1/4, 1,1/4, 1,1, 0,1}}
+  },
+  enemy = {
+    {color = {0.29, 0, 1}, style = 'line', is_closed = true, vertices = {0,0, 0,1, 1,1, 1,0}}, -- , 0,0
+    {color = {0.63, 0, 1}, style = 'fill', vertices = {1/4,1/2, 1/2,1/4, 3/4,1/2, 1/2,3/4}}
+  },
+  goal = {
+    {color = {0, 0.76, 1}, style = 'fill', vertices = {0,1, 1/2,0, 1,1, 3/4,3/4, 1/2,1, 1/4,3/4}}
+  }
 }
 
 if os.getenv("LOCAL_LUA_DEBUGGER_VSCODE") == "1" then
@@ -386,41 +391,6 @@ function love.update(dt)
           love.event.quit()
         end
       end
-
-      -- if entity.type == BULLET then
-      --   if col.other.type == TURRET then
-      --     col.other.health = col.other.health - 1
-      --     if col.other.health <= 0 then
-      --       local turret_ix = indexOf(entities, col.other)
-      --       table.insert(entity_ix_to_remove, turret_ix)
-      --       table.insert(entities_to_remove, col.other)
-      --     end
-      --   end
-
-      --   if col.other.type ~= PLAYER then
-      --     table.insert(entity_ix_to_remove, i)
-      --     table.insert(entities_to_remove, entity)
-      --     break
-      --   end
-      -- elseif entity.type == ENEMY_BULLET then
-      --   if col.other.type == PLAYER then
-      --     col.other.health = col.other.health - 1
-      --     if col.other.health <= 0 then
-      --       local player_ix = indexOf(entities, col.other)
-      --       table.insert(entity_ix_to_remove, player_ix)
-      --       table.insert(entities_to_remove, col.other)
-
-      --       -- also remove player from players table
-      --       table.remove(players, indexOf(players, col.other))
-      --     end
-      --   end
-        
-      --   if col.other.type ~= TURRET then
-      --     table.insert(entity_ix_to_remove, i)
-      --     table.insert(entities_to_remove, entity)
-      --     break
-      --   end
-      -- end
     end
   end
 
@@ -482,44 +452,9 @@ function love.draw()
       local style = entity.style or 'fill'
       local x = entity.x
       local y = entity.y
-      if entity.shape == 'rect' then
-        love.graphics.rectangle(style, x, y, tile_size, tile_size)
-      elseif entity.shape == 'rect-small' then
-        love.graphics.rectangle(style, x+tile_size/8, y+tile_size/8, tile_size * 0.75, tile_size * 0.75)
-      elseif entity.shape == 'rect-rounded' then
-        love.graphics.rectangle(style, x, y, tile_size, tile_size, tile_size/4, tile_size/4)
-      elseif entity.shape == 'rect-small-rounded' then
-        love.graphics.rectangle(style, x+tile_size/8, y+tile_size/8, tile_size * 0.75, tile_size * 0.75, tile_size/4, tile_size/4, 32)
-      elseif entity.shape == 'circle' then
-        love.graphics.circle(style, x + tile_size/2, y + tile_size/2, tile_size / 2)
-        if style == 'fill' then
-          love.graphics.circle('line', x + tile_size/2, y + tile_size/2, tile_size / 2)
-        end
-      elseif entity.shape == 'triangle-up' then
-        love.graphics.polygon('fill', x,y+tile_size, x+tile_size/2,y, x+tile_size,y+tile_size)
-      elseif entity.shape == 'triangle-down' then
-        love.graphics.polygon('fill', x,y, x+tile_size/2,y+tile_size, x+tile_size,y)
-      elseif entity.shape == 'triangle-right' then
-        love.graphics.polygon('fill', x,y, x+tile_size,y+tile_size/2, x,y+tile_size)
-      elseif entity.shape == 'triangle-left' then
-        love.graphics.polygon('fill', x+tile_size,y, x,y+tile_size/2, x+tile_size,y+tile_size)
-      elseif entity.shape == 'diamond' then
-        love.graphics.polygon('fill', x+tile_size/2,y, x+tile_size,y+tile_size/2, x+tile_size/2,y+tile_size, x,y+tile_size/2)
-      elseif entity.shape == 'goal' then
-        -- polygon() can only draw convex shapes, since the goal is concave, we need to decompose it via triangulate()
-        local vertices = {x,y+tile_size, x+tile_size/2,y, x+tile_size,y+tile_size, x+(3/4)*tile_size,y+(3/4)*tile_size, x+tile_size/2,y+tile_size, x+tile_size/4,y+(3/4)*tile_size}
-        local triangles = love.math.triangulate(vertices)
-        for i, triangle in ipairs(triangles) do
-          love.graphics.polygon("fill", triangle)
-        end
-      elseif entity.shape == 'enemy' then
-        love.graphics.setColor(0.29, 0, 1)
-        love.graphics.rectangle('line', x, y, tile_size, tile_size)
 
-        love.graphics.setColor(0.63, 0, 1)
-        love.graphics.polygon('fill', x+tile_size/4,y+tile_size/2, x+tile_size/2,y+tile_size/4, x+(3/4)*tile_size,y+tile_size/2, x+tile_size/2,y+(3/4)*tile_size)
-      elseif entity.shape == 'stone' then
-        local is_stone_above = false
+      local is_stone_above = false
+      if entity.shape == 'stone' then
         for j = 1, #entities do
           local candidate = entities[j]
           -- check for a block immediately above (same x and a y+height that equals the block's y)
@@ -527,44 +462,46 @@ function love.draw()
             is_stone_above = true
           end
         end
+      end
 
-        if is_stone_above then
-          -- no moss, just solid grey stone
-          love.graphics.setColor(0.204, 0.204, 0.204)
-          love.graphics.rectangle('fill', x, y, tile_size, tile_size)
-        else
-          love.graphics.push()
-          love.graphics.translate(x, y)
-          love.graphics.scale(tile_size)
+      if is_stone_above then
+        -- no moss, just solid grey stone
+        love.graphics.setColor(0.204, 0.204, 0.204)
+        love.graphics.rectangle('fill', x, y, tile_size, tile_size)
+      elseif entity.shape == 'rect' then
+        love.graphics.rectangle(style, x, y, tile_size, tile_size)
+      else
+        if vectors[entity.shape] == nil then
+          error('Unknown shape: ' .. entity.shape)
+        end
+        
+        -- custom vector drawing
+        -- TODO: pull into shared function to avoid DRY violation w/ vector-editor.lua?
+        -- But we do want the vector editor and this game engine to be fully decoupled
+        love.graphics.push()
+        love.graphics.translate(x, y)
+        love.graphics.scale(tile_size)
 
-          for x, layer in ipairs(stone_with_moss) do
-            love.graphics.setColor(layer.color)
-            local vertices = layer.vertices
-            if layer.style == 'fill' then
-              if #vertices > 3*2 then
-                local triangles = love.math.triangulate(vertices)
-                for i, triangle in ipairs(triangles) do
-                  love.graphics.polygon('fill', triangle)
-                end
-              end
-            elseif layer.style == 'line' then
-              if layer.is_closed then
-                love.graphics.polygon('line', vertices)
-              else
-                love.graphics.line(vertices)
+        for x, layer in ipairs(vectors[entity.shape]) do
+          love.graphics.setColor(layer.color)
+          local vertices = layer.vertices
+          if layer.style == 'fill' then
+            if #vertices > 3*2 then
+              local triangles = love.math.triangulate(vertices)
+              for i, triangle in ipairs(triangles) do
+                love.graphics.polygon('fill', triangle)
               end
             end
+          elseif layer.style == 'line' then
+            love.graphics.setLineWidth(1 / tile_size)
+            if layer.is_closed then
+              love.graphics.polygon('line', vertices)
+            else
+              love.graphics.line(vertices)
+            end
           end
-          love.graphics.pop()
-        -- -- draw a moss covering the top 1/4
-        --   love.graphics.setColor(0.325, 1, 0.957)
-        --   love.graphics.rectangle('fill', x, y, tile_size, tile_size/4)
-        --   -- draw the stone underneath
-        --   love.graphics.setColor(0.204, 0.204, 0.204)
-        --   love.graphics.rectangle('fill', x, y+tile_size/4, tile_size, tile_size * 3 / 4)
         end
-      else
-        error('Unknown shape: ' .. entity.shape)
+        love.graphics.pop()
       end
     else
       love.graphics.setColor({1, 1, 1})
@@ -609,14 +546,15 @@ function love.resize(w, h)
 end
 
 function love.keypressed(key, scancode, isrepeat)
-  if key == "escape" then
+  if key == "escape" then -- 'esc' to quit the game
     love.event.quit()
-  elseif key == 'e' then
-    vector_editor.initialize(stone_with_moss)
+  elseif key == 'e' then -- 'e' for editor
+    local shape = blocks_to_place[block_to_place_ix];
+    vector_editor.initialize(vectors[shape])
     vector_editor.onSave = function(obj)
-      stone_with_moss = obj
+      vectors[shape] = obj
     end
-  elseif key == 'f5' then
+  elseif key == 'f5' then -- 'F5' to save the level design
     bitser.dumpLoveFile(curr_level_file, level)
   end
 end
