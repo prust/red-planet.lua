@@ -3,7 +3,7 @@
 
 -- Owen's Wish List:
 -- [x] Have to hit "X" button when you're touching the goal to win
--- [ ] Make enemies move
+-- [x] Make enemies move
 
 -- Other Ideas:
 --   in-game level design (block placing)
@@ -243,7 +243,7 @@ function love.update(dt)
           local candidate = entities[j]
 
           -- check for gaps between rectangles to detect collision
-          if (candidate.type == BLOCK) and (candidate.x <= entity.x + entity.w) and (candidate.x + candidate.w >= entity.x) and (candidate.y <= entity.y + entity.h) and (candidate.h + candidate.y >= entity.y) then
+          if (candidate.type == BLOCK or candidate.type == GOAL) and (candidate.x <= entity.x + entity.w) and (candidate.x + candidate.w >= entity.x) and (candidate.y <= entity.y + entity.h) and (candidate.h + candidate.y >= entity.y) then
             is_block_under_player = true
           end
         end
