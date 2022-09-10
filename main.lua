@@ -235,9 +235,6 @@ function love.update(dt)
       local dx, dy = entity.input:get('move')
       entity.dx = dx * entity_speed
       
-      -- gravity
-      entity.dy = entity.dy + 0.5
-      
       -- jumping
       if entity.input:pressed('jump_or_select') then
         -- check if there's a block under the player, to jump from
@@ -253,18 +250,6 @@ function love.update(dt)
         if is_block_under_player then
           entity.dy = -10
         end
-      end
-
-      -- cap the player velocity
-      if entity.dx > 0 then
-        entity.dx = math.min(entity.dx, entity_max_speed)
-      elseif entity.dx < 0 then
-        entity.dx = math.max(entity.dx, -entity_max_speed)
-      end
-      if entity.dy > 0 then
-        entity.dy = math.min(entity.dy, entity_max_speed)
-      elseif entity.dy < 0 then
-        entity.dy = math.max(entity.dy, -entity_max_speed)
       end
       
       if entity.sel_x and entity.sel_y then
@@ -285,10 +270,20 @@ function love.update(dt)
         end
 
         if entity.input:pressed('place') then
-          entity.placing_mode = not is_block_already -- "placing" if a block isn't alreday there, "removing" if it is
+          entity.placing_mode = not is_block_already -- "placing" if a block isn't already there, "removing" if it is
         end
         
-        if entity.input:down('place') then
+        -- when placing enemy blocks, only place them once (if the button was pressed this frame)
+        -- when placing all other blocks, place them if the button is still down
+        local shape = blocks_to_place[block_to_place_ix];
+        local should_place
+        if shape == 'enemy' then
+          should_place = entity.input:pressed('place')
+        else
+          should_place = entity.input:down('place')
+        end
+
+        if should_place then
           if (entity.placing_mode and not is_block_already) or (not entity.placing_mode and is_block_already) then
             -- make placing sound
             if (place_src:isPlaying()) then
@@ -301,11 +296,11 @@ function love.update(dt)
               block = {
                 x = dest_x,
                 y = dest_y,
-                dx = 0,
+                dx = (shape == 'enemy') and 5 or 0,
                 dy = 0,
                 w = 32,
                 h = 32,
-                shape = blocks_to_place[block_to_place_ix],
+                shape = shape,
                 color = {0, 0.76, 1}
               }
               if block.shape == 'goal' then
@@ -353,11 +348,34 @@ function love.update(dt)
 
   for i = 1, #entities do
     local entity = entities[i]
+
+    -- gravity (players & enemies)
+    if entity.input or entity.shape == 'enemy' then
+      entity.dy = entity.dy + 0.5
+    end
+
+    -- cap the entity velocity
+    if entity.dx > 0 then
+      entity.dx = math.min(entity.dx, entity_max_speed)
+    elseif entity.dx < 0 then
+      entity.dx = math.max(entity.dx, -entity_max_speed)
+    end
+    if entity.dy > 0 then
+      entity.dy = math.min(entity.dy, entity_max_speed)
+    elseif entity.dy < 0 then
+      entity.dy = math.max(entity.dy, -entity_max_speed)
+    end
+
     local cols
     entity.x, entity.y, cols = world:move(entity, entity.x + entity.dx, entity.y + entity.dy, getCollType)
 
     for j = 1, #cols do
       local col = cols[j]
+      if entity.type == ENEMY then
+        if col.normal.x ~= 0 then
+          entity.dx = -entity.dx -- bounce off things in horiz axis
+        end
+      end
       if entity.type == PLAYER then
         -- if it's an enemy, you lose
         -- if it's a goal, you win
