@@ -5,6 +5,23 @@
 -- [x] Have to hit "X" button when you're touching the goal to win
 -- [x] Make enemies move
 
+-- Peter's Wish List:
+-- [ ] Keep the aim (for selecting blocks) centered on the current player
+--     - but make the selection move when the joystick is pushed from center (experiment w/ diff speeds)
+--     - and stop moving (but not go back to the player) when it is centered
+--     - and don't allow the selection to go off screen
+--     - that keeps all the benefits of simultaneously playing & editing, and editing with controllers
+-- [ ] Make the viewport move with a 1/4-screen padding in all directions
+-- [ ] Add a virtual border 1/3-screen in all directions from the nearest content
+--     - so players & enemies don't fall forever
+--     - there'll be an option to make them die (and maybe respawn) if they hit a border
+--     - but the default behavior will be for the border to be "solid" (can walk/jump on it, bounce off of it, etc)
+
+-- Vector Editor Improvements:
+-- [ ] Allow creating new sprites, in addition to the 3 built-ins (enemy/stone/goal)
+-- [ ] Allow editing the player sprite(s)
+-- [ ] Allow creating new layers, changing/setting the color of a layer, changing the order of layers
+
 -- Other Ideas:
 --   in-game level design (block placing)
 --   encourages game designers to prototype & test game ideas with simple shapes before investing in artwork & animation
