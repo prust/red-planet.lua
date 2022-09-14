@@ -6,7 +6,7 @@
 -- [x] Make enemies move
 
 -- Peter's Wish List:
--- [ ] Keep the aim (for selecting blocks) centered on the current player
+-- [x] Keep the aim (for selecting blocks) centered on the current player
 --     - but make the selection move when the joystick is pushed from center (experiment w/ diff speeds)
 --     - and stop moving (but not go back to the player) when it is centered
 --     - and don't allow the selection to go off screen
@@ -47,7 +47,7 @@ bitser = require 'libs/bitser'
 
 vector_editor = require 'vector-editor'
 
-local curr_level_file = 'owen_level_03.dat'
+local curr_level_file = 'dad_level_01.dat'
 local level = {
   red_planet_ver = 0,
   entities = {}
@@ -76,6 +76,9 @@ local GOAL = 7
 
 local blocks_to_place = {'stone', 'enemy', 'goal'}
 local block_to_place_ix = 1
+
+local confirm = nil
+local is_paused = false
 
 -- some built-in default vector graphics
 local vectors = {
@@ -139,7 +142,7 @@ function love.load()
         move = {'move_left', 'move_right', 'move_up', 'move_down'},
         aim = {'aim_left', 'aim_right', 'aim_up', 'aim_down'}
       },
-      deadzone = 0.5,
+      deadzone = 0.2,
       joystick = joysticks[i]
     })))
   end
@@ -176,8 +179,8 @@ function love.load()
         w = tile_size,
         h = tile_size,
         rot = 0,
-        aim_x = nil,
-        aim_y = nil,
+        aim_x = 0,
+        aim_y = 0,
         sel_x = nil,
         sel_y = nil,
         tile_ix = 1,
@@ -224,6 +227,10 @@ function love.load()
 end
 
 function love.update(dt)
+  if is_paused then
+    return
+  end
+
   -- Hande player input & player shooting
   local block_indexes_to_remove = {}
   for i=1, #entities do
@@ -233,21 +240,25 @@ function love.update(dt)
       entity.input:update()
 
       local aim_x, aim_y = entity.input:get('aim')
-      if aim_x ~= 0 and aim_y ~= 0 then
-        local len = math.sqrt(aim_x^2 + aim_y^2)
-        aim_x = aim_x / len
-        aim_y = aim_y / len
-        entity.aim_x = aim_x
-        entity.aim_y = aim_y
+      local delta_x = (aim_x * 4)^2
+      if aim_x < 0 then
+        delta_x = -delta_x
       end
+      local delta_y = (aim_y * 4)^2
+      if aim_y < 0 then
+        delta_y = -delta_y
+      end
+      entity.aim_x = entity.aim_x + delta_x
+      entity.aim_y = entity.aim_y + delta_y
 
-      if entity.aim_x and entity.aim_y then
-        entity.sel_x = math.floor((entity.x + (entity.w / 2) + (entity.aim_x * 50)) / 32)
-        entity.sel_y = math.floor((entity.y + (entity.h / 2) + (entity.aim_y * 50)) / 32)
-      else
-        entity.sel_x = nil
-        entity.sel_y = nil
-      end
+      -- ensure the player's selection box never goes offscreen
+      local round_win_w = math.floor(win_w / tile_size) * tile_size
+      local round_win_h = math.floor(win_h / tile_size) * tile_size
+      entity.aim_x = clamp(entity.aim_x, -entity.x, win_w - entity.x - tile_size)
+      entity.aim_y = clamp(entity.aim_y, -entity.y, win_h - entity.y - tile_size)
+      
+      entity.sel_x = math.floor((entity.x + (entity.w / 2) + entity.aim_x) / tile_size)
+      entity.sel_y = math.floor((entity.y + (entity.h / 2) + entity.aim_y) / tile_size)
 
       -- for ships (and cars?) rotate the image
       -- if aim_x ~= 0 or aim_y ~= 0 then
@@ -377,36 +388,28 @@ function love.update(dt)
     end
 
     -- cap the entity velocity
-    if entity.dx > 0 then
-      entity.dx = math.min(entity.dx, entity_max_speed)
-    elseif entity.dx < 0 then
-      entity.dx = math.max(entity.dx, -entity_max_speed)
-    end
-    if entity.dy > 0 then
-      entity.dy = math.min(entity.dy, entity_max_speed)
-    elseif entity.dy < 0 then
-      entity.dy = math.max(entity.dy, -entity_max_speed)
-    end
+    entity.dx = clamp(entity.dx, -entity_max_speed, entity_max_speed)
+    entity.dy = clamp(entity.dy, -entity_max_speed, entity_max_speed)
 
     local cols
     entity.x, entity.y, cols = world:move(entity, entity.x + entity.dx, entity.y + entity.dy, getCollType)
 
     for j = 1, #cols do
       local col = cols[j]
-      if entity.type == ENEMY then
+      if entity.type == ENEMY and col.other.type ~= PLAYER then
         if col.normal.x ~= 0 then
           entity.dx = -entity.dx -- bounce off things in horiz axis
         end
       end
-      if entity.type == PLAYER then
-        -- if it's an enemy, you lose
-        -- if it's a goal, you win
-        -- either way, you're done, so quit the game
-        if col.other.type == ENEMY then
-          love.event.quit()
-        elseif col.other.type == GOAL and entity.input:pressed('action') then
-          love.event.quit()
-        end
+      if (entity.type == PLAYER and col.other.type == ENEMY) or
+        (entity.type == ENEMY and col.other.type == PLAYER) then
+          is_paused = true
+          confirm = {text = 'Game Over (Esc to Quit, Enter to Respawn)'}
+      end
+
+      if entity.type == PLAYER and col.other.type == GOAL and entity.input:pressed('action') then
+        is_paused = true
+        confirm = {text = 'You won! (Esc to Quit, Enter to Respawn)'}
       end
     end
   end
@@ -420,6 +423,16 @@ function love.update(dt)
   -- have to remove items from the world later (here) as well
   for i = 1, #entities_to_remove do
     world:remove(entities_to_remove[i])
+  end
+end
+
+function clamp(val, min, max)
+  if val < min then
+    return min
+  elseif val > max then
+    return max
+  else
+    return val
   end
 end
 
@@ -555,6 +568,18 @@ function love.draw()
   love.graphics.print("FPS: " .. tostring(love.timer.getFPS()), 10, 10)
 
   -- TODO: systems that render points & hearts/health per player
+
+  if confirm ~= null then
+    local horiz_center = math.floor(win_w/2)
+    local vert_middle = math.floor(win_h/2)
+    local w = 300
+    local h = 20
+    love.graphics.setColor(0, 0, 0, 0.8)
+    love.graphics.rectangle('fill', horiz_center-w/2,vert_middle-h/2, w, h)
+    love.graphics.setColor(0.9, 0.9, 0.9)
+    love.graphics.rectangle('line', horiz_center-w/2,vert_middle-h/2, w, h)
+    love.graphics.print(confirm.text, horiz_center-w/2 + 22,vert_middle-h/2 + 2) -- https://love2d.org/wiki/love.graphics.newText
+  end
 end
 
 function love.resize(w, h)
@@ -565,6 +590,15 @@ end
 function love.keypressed(key, scancode, isrepeat)
   if key == "escape" then -- 'esc' to quit the game
     love.event.quit()
+  elseif key == 'return' then
+    confirm = nil
+    is_paused = false
+    local player = players[1]
+    player.x = 5 * tile_size
+    player.y = 5 * tile_size
+    player.dx = 0
+    player.dy = 0
+    world:update(player, player.x, player.y)
   elseif key == 'e' then -- 'e' for editor
     local shape = blocks_to_place[block_to_place_ix];
     vector_editor.initialize(vectors[shape])
