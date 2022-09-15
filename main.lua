@@ -47,7 +47,7 @@ bitser = require 'libs/bitser'
 
 vector_editor = require 'vector-editor'
 
-local curr_level_file = 'dad_level_01.dat'
+local curr_level_file = 'owen-pit.dat' -- 'dad_level_01.dat'
 local level = {
   red_planet_ver = 0,
   entities = {}
@@ -401,6 +401,12 @@ function love.update(dt)
           entity.dx = -entity.dx -- bounce off things in horiz axis
         end
       end
+
+      -- if player bonks on ceiling, stop vertical velocity
+      if entity.type == PLAYER and col.normal.y > 0 then
+        entity.dy = 0
+      end
+      
       if (entity.type == PLAYER and col.other.type == ENEMY) or
         (entity.type == ENEMY and col.other.type == PLAYER) then
           is_paused = true
