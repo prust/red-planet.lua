@@ -73,8 +73,9 @@ local ENEMY_BULLET = 4
 local BLOCK = 5
 local ENEMY = 6
 local GOAL = 7
+local PORTAL = 8
 
-local blocks_to_place = {'stone', 'enemy', 'goal'}
+local blocks_to_place = {'stone', 'enemy', 'goal', 'portal1', 'portal2'}
 local block_to_place_ix = 1
 
 local confirm = nil
@@ -92,6 +93,12 @@ local vectors = {
   },
   goal = {
     {color = {0, 0.76, 1}, style = 'fill', vertices = {0,1, 1/2,0, 1,1, 3/4,3/4, 1/2,1, 1/4,3/4}}
+  },
+  portal1 = {
+    {color = {1, 0, 0.815}, style = 'fill', vertices = {4/10,0, 6/10,0, 6/10,1, 4/10,1}, hit = {4/10,0,2/10,1}}
+  },
+  portal2 = {
+    {color = {0.403, 0.831, 1}, style = 'fill', vertices = {4/10,0, 6/10,0, 6/10,1, 4/10,1}, hit = {4/10,0,2/10,1}}
   }
 }
 
@@ -342,10 +349,22 @@ function love.update(dt)
                 block.type = ENEMY
               elseif block.shape == 'stone' then
                 block.type = BLOCK
+              elseif block.shape == 'portal1' or block.shape == 'portal2' then
+                block.type = PORTAL
               end
               table.insert(entities, block)
 
-              world:add(block, block.x, block.y, block.w, block.h)
+              -- TODO: FIX THIS! hit area should be on the sprite as a whole, not specific shapes
+              if vectors[block.shape][1].hit then
+                local hit = vectors[block.shape][1].hit
+                local hit_x = math.floor(hit[1] * tile_size)
+                local hit_y = math.floor(hit[2] * tile_size)
+                local hit_w = math.floor(hit[3] * tile_size)
+                local hit_h = math.floor(hit[4] * tile_size)
+                world:add(block, block.x+hit_x, block.y+hit_y, hit_w, hit_h)
+              else
+                world:add(block, block.x, block.y, block.w, block.h)
+              end
             -- remove block
             else
               table.insert(block_indexes_to_remove, block_ix)
@@ -392,30 +411,58 @@ function love.update(dt)
     entity.dy = clamp(entity.dy, -entity_max_speed, entity_max_speed)
 
     local cols
-    entity.x, entity.y, cols = world:move(entity, entity.x + entity.dx, entity.y + entity.dy, getCollType)
+    if entity.dx ~= 0 or entity.dy ~= 0 then
+      entity.x, entity.y, cols = world:move(entity, entity.x + entity.dx, entity.y + entity.dy, getCollType)
 
-    for j = 1, #cols do
-      local col = cols[j]
-      if entity.type == ENEMY and col.other.type ~= PLAYER then
-        if col.normal.x ~= 0 then
-          entity.dx = -entity.dx -- bounce off things in horiz axis
+      for j = 1, #cols do
+        local col = cols[j]
+        if entity.type == ENEMY and col.other.type ~= PLAYER then
+          if col.normal.x ~= 0 then
+            entity.dx = -entity.dx -- bounce off things in horiz axis
+          end
         end
-      end
 
-      -- if player bonks on ceiling, stop vertical velocity
-      if entity.type == PLAYER and col.normal.y > 0 then
-        entity.dy = 0
-      end
-      
-      if (entity.type == PLAYER and col.other.type == ENEMY) or
-        (entity.type == ENEMY and col.other.type == PLAYER) then
+        if entity.type == PLAYER and col.other.type == PORTAL and col.normal.x ~= 0 then
+          local other_portal = nil
+          for k = 1, #entities do
+            local other = entities[k]
+            if other ~= col.other and other.type == PORTAL and other.shape ~= col.other.shape then
+              other_portal = other
+            end
+          end
+
+          if other_portal ~= nil then
+            entity.y = other_portal.y
+            if entity.dx > 0 then
+              local hit = vectors[other_portal.shape][1].hit
+              local hit_x = math.floor(hit[1] * tile_size)
+              local hit_w = math.floor(hit[3] * tile_size)
+              entity.x = other_portal.x + hit_x + hit_w
+            elseif entity.dx < 0 then
+              local hit = vectors[other_portal.shape][1].hit
+              local hit_x = math.floor(hit[1] * tile_size)
+              local hit_w = math.floor(hit[3] * tile_size)
+              entity.x = other_portal.x + hit_x - entity.w
+            end
+            world:update(entity, entity.x, entity.y)
+          end
+        end
+
+        -- if player bonks on ceiling, stop vertical velocity
+        if entity.type == PLAYER and col.normal.y > 0 then
+          entity.dy = 0
+        end
+        
+        if (entity.type == PLAYER and col.other.type == ENEMY) or
+          (entity.type == ENEMY and col.other.type == PLAYER) then
+            is_paused = true
+            confirm = {text = 'Game Over (Esc to Quit, Enter to Respawn)'}
+        end
+
+        if entity.type == PLAYER and col.other.type == GOAL and entity.input:pressed('action') then
           is_paused = true
-          confirm = {text = 'Game Over (Esc to Quit, Enter to Respawn)'}
-      end
-
-      if entity.type == PLAYER and col.other.type == GOAL and entity.input:pressed('action') then
-        is_paused = true
-        confirm = {text = 'You won! (Esc to Quit, Enter to Respawn)'}
+          confirm = {text = 'You won! (Esc to Quit, Enter to Respawn)'}
+        end
       end
     end
   end
